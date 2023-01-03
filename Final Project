@@ -1,0 +1,174 @@
+---
+title: "Final Project - Paulami Ray"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(rpart.plot)
+library(rpart)
+
+# Loading the data sets into R workspace
+loans_2017 = read.csv("application2017.csv")
+
+# Check loans_2017 structure
+glimpse(loans_2017)
+
+# Generating a new variable - "profit" that takes the value 1 if the difference between amount paid and loan amoount is equal to or greater than zero and 0 otherwise. Also generated the variable meanincome which is the average income of 1 #year and 2 year time period
+
+loans_2017 <- loans_2017 %>%
+  mutate(profit = ifelse(amt_paid - loan_amt >= 0,1,0))%>%
+  group_by(id)%>%
+  mutate(meanincome= ((W2inc_m1 + W2inc_m2)/2)) %>%
+  ungroup()%>%
+  mutate(li_ratio = ifelse(loan_amt / meanincome == Inf , 0, loan_amt / meanincome))%>%
+  dplyr::select(-id,-name,-SSN,-date,-amt_paid,-loan_amt,-W2inc_m1,-W2inc_m2) %>%
+  filter(complete.cases(.))
+
+
+# Convert categorical variables into factors
+
+fact_col <- c(2, 4, 5, 6)
+loans_2017[,fact_col] <- lapply(loans_2017[ ,fact_col], as.factor) 
+
+#check final data set
+glimpse(loans_2017)
+```
+
+
+```{r}
+
+# Split in the training and testing data sets
+set.seed(1)
+train_2017 <- sample_frac(loans_2017, 0.9)
+test_2017 <- setdiff(loans_2017, train_2017)
+```
+
+```{r}
+
+# Linear regression
+linear_form <- formula(profit ~ .)
+lm_fit <- glm(linear_form, data = train_2017)
+
+# Predict in the test data
+lm_predict <- predict(lm_fit, newdata = test_2017)
+
+# Accuracy
+cutoff <- 0.8
+lm_approve <- ifelse(lm_predict >= cutoff , 1, 0)
+
+lm_acc <- mean(lm_approve == test_2017$profit)
+
+confusion_matrix_lm <-table(predict = lm_approve, real = test_2017$profit )
+
+confusion_matrix_lm
+
+
+paste("accuracy rate for lm model is", lm_acc)
+
+#Graph
+train_2017 %>% 
+  ggplot() + 
+  geom_point(aes(x=creditscore, y=profit)) +
+  geom_point(aes(x=creditscore, y=lm_fit$fitted.values), color="red") 
+```
+
+```{r}
+#Logistic
+log_form <- formula(factor(profit)~.)
+
+#fit the model , family binomial is for logistic regressions
+log_fit <- glm(log_form, data=train_2017, family = binomial(link = "logit"))
+
+#predict values
+log_predict <- predict(log_fit, newdata = test_2017, type = "response")
+
+
+# Accuracy
+log_approve <- ifelse(log_predict >= cutoff, 1, 0)
+
+log_acc <- mean(log_approve == test_2017$profit)
+
+confusion_matrix_log <-table(prdict = log_approve, real = test_2017$profit )
+
+confusion_matrix_log
+
+paste("accuracy rate for log model is", log_acc)
+
+#Graph
+train_2017 %>% 
+  ggplot() + 
+  geom_point(aes(x=creditscore, y=profit)) +
+  geom_point(aes(x=creditscore, y=log_fit$fitted.values), color="red") 
+```
+
+```{r}
+# Decision Tree
+tree_fit <- rpart(factor(profit) ~ ., data = train_2017, cp = 0.001, method = 'class')
+
+#Graph
+prp(tree_fit, extra = 1, box.palette = "auto")
+
+# Predict in the test data
+tree_predict <- predict(tree_fit, newdata = test_2017)
+
+#ACC
+tree_approve <-  ifelse(tree_predict[,2] >= cutoff, 1, 0)
+
+tree_acc <- mean(tree_approve == test_2017$profit)
+
+confusion_matrix_tree <-table(prdict = tree_approve, real = test_2017$profit )
+
+confusion_matrix_tree
+
+paste("accuracy rate for tree model is", tree_acc)
+
+```
+
+```{r}
+# Make CSV file
+loans_2018 = read.csv("application2018.csv")
+
+
+loans_2018 <- loans_2018 %>%
+  group_by(id)%>%
+  mutate(meanincome= ((W2inc_m1 + W2inc_m2)/2)) %>%
+  ungroup()%>%
+  mutate(li_ratio = ifelse(loan_amt / meanincome == Inf , 0, loan_amt / meanincome))%>%
+  dplyr::select(-SSN,-date,-loan_amt,-W2inc_m1,-W2inc_m2) %>%
+  filter(complete.cases(.))
+
+# Factor variables
+
+fact_col <- c( 4, 6, 7, 8)
+loans_2018[,fact_col] <- lapply(loans_2018[ ,fact_col], as.factor) 
+
+
+# Decision Tree
+
+# Predict in the test data for 2018, filter out first 2 coulmns of dataset
+predict_2018 <- predict(tree_fit, newdata = loans_2018[,-c(1,2)])
+
+#Accuracy , set cutoff
+predict_2018_approve <-  ifelse(predict_2018[,2] >= cutoff, 1, 0)
+
+#create approval column
+loans_2018$approve <- predict_2018_approve
+
+#create final dataset
+loan_approval_2018 <- dplyr::select(loans_2018, id,name,approve)
+
+#check dataset
+glimpse(loan_approval_2018)
+
+#loan approval rate
+paste("loan approval rate is", sum(loan_approval_2018$approve)/nrow(loan_approval_2018))
+
+#save to csv
+write.csv(loan_approval_2018,'loan_approval_2018.csv',row.names = FALSE)
+```
