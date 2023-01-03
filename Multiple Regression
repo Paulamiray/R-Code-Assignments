@@ -1,0 +1,289 @@
+---
+title: "Lab 06 -- Multiple and Non-Linear Regression"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: simplex
+    fig_caption: true
+    number_sections: false
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, error = TRUE)
+```
+
+# Getting started
+Last class, we considered simple linear models of the relationship between an outcome $Y$ and a single explanatory variable $X$.  However, often we have multiple explanatory variables $X_1,X_2,\ldots,X_p$.  In this lab, we explore modeling the relationship between an outcome variable and multiple explanatory variables using multiple linear regression.
+
+ Including multiple explanatory variables in the model can be interesting for multiple reasons:
+
+* **Prediction:** If we are trying to predict $Y$, using multiple explanatory variables often (but not always!) provides a more accurate prediction than a model with a single explanatory variable.
+
+* **Inference:** We often want to know how a particular explanatory variable $X$ affects $Y$, but there may be other factors also affecting both $X$ and $Y$ that confound that relationship.  A common goal is to understand the relationship between $X$ and $Y$ with these other factors held constant.  A multiple linear regression allows us to "control" for other variables affecting both $X$ and $Y$ so that we can isolate the relationship between $X$ and $Y$ alone.
+
+
+## Simulated data
+When learning a new data analytics tool, it is often helpful to test out the tool on simulated data where you know what the patterns are. You can then confirm whether your analytics tool is giving you the answer you expect.
+
+Let's construct a simulated data set of housing values, as a function of square feet and number of rooms.
+```{r, message=F}
+require(tidyverse)
+
+# Set seed for replicability
+set.seed(2)
+
+# House ID (tibble, with 1000 obs)
+housing_sim <- 
+
+# Number of rooms - random integer between 2 and 7
+housing_sim <- housing_sim %>% 
+  mutate(rooms = )
+
+# Square feet
+housing_sim <- housing_sim %>% 
+  mutate(sqft = 200*rooms*(1 + {uniform error between 0 and 1}))
+
+# Home values
+# Set sqft^2 coef to 0 or 0.05
+# Set error coef to 0 or 50,000
+housing_sim <- housing_sim %>% 
+  mutate(value = 
+           350*sqft - A*sqft^2
+         - 25000*rooms 
+         + B*{uniform error between -1 and 1}
+```
+
+Calculate summary statistics (tables, figures) of the relationships between `sqft`, `rooms`, and home `value`.
+```{r}
+# Room and Sqft summary stats
+housing_sim %>% 
+  ggplot(aes(x=rooms, y=sqft)) +
+  geom_point()
+
+housing_sim %>% 
+  group_by(rooms) %>% 
+  summarise(mean(sqft))
+
+# Value and Room summary stats
+housing_sim %>% 
+  ggplot(aes(x=rooms, y=value)) +
+  geom_point()
+
+housing_sim %>% 
+  group_by(rooms) %>% 
+  summarise(mean(value), min(value), max(value))
+
+# Value and sqft summary stats
+housing_sim %>% 
+  ggplot(aes(x=sqft, y=value)) +
+  geom_point()
+```
+
+
+## Simple linear regression
+What if we model housing values, considering only one characteristic at a time?
+```{r}
+require(stargazer)
+
+# Linear model of value as a function of sqft
+lm_sqft <- lm(value ~ sqft, data = housing_sim)
+
+# Linear model of value as a function of rooms
+lm_rooms <- housing_sim %>% 
+  lm(value ~ rooms)
+
+# Display results
+stargazer(lm_sqft, lm_rooms, type="text", 
+          df = FALSE, omit.stat = c("adj.rsq", "ser", "f"))
+```
+
+
+# Mulitple linear regression
+Now we will model housing values, controlling for multiple characteristics jointly.
+
+## Continuous predictors
+Additional explanatory variables can be added to a regression formula in R using the "+" symbol. If the explanatory variables are to be treated as continuous variables, we can simply add the variables, as in `Y~X+Z`. 
+
+Model housing values as a function of `sqft` and`rooms`, treating both predictors as continuous variables. How do the results compare compare to the simple linear regressions, and why?
+
+```{r, eval=FALSE}
+# Linear model of value as functions of sqft and rooms
+lm_both <- lm(, data=housing_sim)
+
+# Report results using stargazer function
+stargazer(lm_sqft, lm_rooms, lm_both, type="text", df = FALSE, omit.stat = c("adj.rsq", "ser", "f"))
+```
+
+## Categorical predictors
+Categorical variables are those where each value of the variable defines a group. Categorical variables, also called factor variables, are common in many application. They are sometimes coded using numbers (e.g., Social Security Number) and sometimes as strings (e.g., firm name). 
+
+Encoding a categorical variable as a number and treating it as a continuous variable in a modeling framework often makes little sense. Doing so assumes that the encoding of the categorical variable has a linear relationship with the outcome, which it may not. 
+
+Instead, a more flexible approach is to include a set of "dummy" or "indicator" variables that take on values of 0 or 1 to identify whether an observation falls into a particular category. This approach allows for an abitrary (non-linear) relationship between the outcome and each categorical value of the variable.
+
+Model housing values as a function of `rooms`, where `rooms` is treated as a categorical variable.
+```{r}
+# Define room dummy variables
+housing_sim <- housing_sim %>% 
+  mutate(
+    rooms2 = (rooms==2),
+    rooms3 = (rooms==3),
+    rooms4 = (rooms==4),
+    rooms5 = (rooms==5),
+    rooms6 = (rooms==6),
+    rooms7 = (rooms==7)
+  )
+
+# Mean value, by room
+housing_sim %>% summarise(mean(value))
+
+# Regression with all room dummies, no intercept
+lm(value~0+rooms2+rooms3+rooms4+rooms5+rooms6+rooms7, data=housing_sim)
+
+# Estimate regression model including room dummy variables
+#   What does intercept describe?
+#   What do dummy variable coefficients describe?
+lm(value ~ , data=housing_sim)
+# OR using as.factor
+lm(value~, data=housing_sim)
+```
+
+
+## Polynomial predictors
+Sometimes we have a continous explanatory variable where there is curvature (i.e. non-linearity) between that predictor and the outcome of interest. We can allow for non-linearity in our model by allowing the relationship between the outcome and predictor to follow a quadratic, cubic, or even higher-order polynomial relationship.
+
+Model housing values as a cubic polynomial function of `sqft`.
+```{r}
+# Define cubic terms of sqft (sqft, sqft_2, sqft_3)
+housing_sim <- 
+
+# Estimate regression model including cubic polynomial of sqft
+lm_sq_v1 <- lm(value ~ , data = housing_sim) 
+
+# Using poly() (do not orthogonalize)
+lm_sq_v2 <- lm(value ~ , data = housing_sim)
+
+# Using poly() (orthogonalized)
+lm_sq_v3 <- lm(value ~ , data = housing_sim)
+
+stargazer(lm_sq_v1, lm_sq_v2, lm_sq_v3,
+          type="text", df = FALSE, omit.stat = c("adj.rsq", "ser", "f"))
+
+# All specifications above are equivalent, and generate identical predictions
+all.equal(lm_sq_v1, lm_sq_v2, lm_sq_v3)
+```
+
+
+
+# Application: Boston Housing Data
+In this section we provide an application of the multiple regression tools above to the Boston Housing Data, which consist of housing values in suburbs of Boston taken from the 1970 Census. The data set also contains other information that may affect house prices, such as the crime rate in the area and the proportion of owner-occupied houses. The data set and data dictionary can be found at [Boston Housing Data](https://archive.ics.uci.edu/ml/machine-learning-databases/housing/).
+
+In RStudio, create a folder called `lab-06` and set this folder as your working directory.  Download to your lab directory the `housing.data` and `housing.names` files from the Boston Housing Data archive to a sub-directory of called `data_housing`. You can perform these steps manually, but a more reproducible approach is to perform these steps using R commands.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+
+# Make data directory
+dir.create("data_housing")
+
+# Download data
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data" %>% 
+  download.file("data_housing/housing.data")
+
+# Download data dictionary
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names" %>% 
+  download.file("data_housing/housing.names")
+
+# Variable names from housing.names
+variables <- c("CRIM", "ZN", "INDUS",  "CHAS", "NOX", "RM", "AGE", 
+               "DIS", "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+
+# Read data
+housing_data <- read_table("data_housing/housing.data", col_names = variables)
+names(housing_data)
+```
+
+## Review: simple linear regression
+Last class we worked with a very simple model, that explained how the median housing value was affected by the of level of nitric oxides concentration. We found a negative relationship, what means that the higher the concentration of NOX, the lower the median value of a house in an area. This result is reproduced below (notice the values are slightly different because now we are working with the whole sample, not only the subset of 20 observations).
+
+```{r}
+model_nox <- lm(MEDV ~ NOX, data = housing_data)
+stargazer(model_nox, type = "text")
+```
+
+## Binary predictors
+Although not a rule, riverside locations are considered an amenity in many cities, and we expect it to influence the housing price. In the case of Boston, the city is crossed by the Charles River. Because there are only two categories in this variable, either crossed by the river or not, we call it a binary variable. The model below adds this variable to our simple linear model.
+
+```{r warning = FALSE}
+table(housing_data$CHAS)
+
+summarise(housing_data, mean_MEDV = mean(MEDV, na.rm = TRUE), mean_NOX = mean(NOX, na.rm = TRUE), mean_CHAS = mean(CHAS, na.rm = TRUE))
+
+model_nox_chas <- lm(MEDV ~ NOX + CHAS, data = housing_data)
+
+stargazer(model_nox, model_nox_chas, type = "text")
+
+```
+
+In the simple model, an increase of one part per 10 million of nitric oxides concentration reduces the median housing price by 33.9 thousand dollars. Considering the mean of both variables, we can rephrase this as an increase of 1 part per billion of nitric oxides concentration reduces the median housing price by 0.339 thousand dollars.
+
+In the multiple linear model, the interpretation is slightly different. In the simple linear model we interpret a slope coefficient as the amount the dependent variable (MEDV) that changes given a 1 unit increase in the independent variable (CHAS). Now, as we include more control variables, the interpretation becomes "the amount the dependent variable changes given a 1 unit increase in one of the independent variables, holding other controls constant."
+
+In our case, the effect of NOX becomes even stronger in the multiple model. This means that an increase of one part per 10 million of nitric oxides concentration reduces the median housing price by 35.4 thousand dollars, keeping the location to the Charles River constant. 
+
+In addittion, simply for being by the Charles river the median value of a house in a neighborhood increases by 7.8 thousand dollars, keeping the NOX constant. This means that if two houses were located in areas with the same NOX concentration but different riverside locations, the one close to the river would cost 7.8 thousand dollars more. Since riverside location is a binary variable, the interpretation is not by a change in 1 unit, but by turning on/off that characteristic. 
+
+## Continous predictors
+Until now our model considered only characteristics of the neighborhood in housing prices. But it is definitely true that characteristics of a house, such as the number of rooms, have a crucial effect on its price.
+
+The model below adds the average number of rooms per dwelling to our model.
+
+```{r warning = FALSE}
+summarise(housing_data, mean_MEDV = mean(MEDV, na.rm = TRUE), mean_NOX = mean(NOX, na.rm = TRUE), mean_CHAS = mean(CHAS, na.rm = TRUE), mean_RM = mean(RM, na.rm = TRUE) )
+
+model_nox_chas_rm <- lm(MEDV ~ NOX + CHAS + RM, data = housing_data)
+
+stargazer(model_nox, model_nox_chas, model_nox_chas_rm, type = "text")
+```
+
+Model 3 is getting more interesting. The environmental variables still matter, but the average number of rooms has a strong and positive effect on housing prices. The results say that for each room added, the median house price increased by 7.9 thousand dollars.
+
+## Polynomial predictors
+
+We expect the number of rooms to affect prices, but maybe not in a linear form. To deal with this limitation of the linear model, we add a polynomial of the number of rooms by using `poly(RM, 2, raw = TRUE)`. It corresponds to adding $RM + RM^2$ to the model. You can change the degree of the polynomial to add more flexibility, but be careful with the interpretation..  
+
+```{r}
+model_nox_chas_polyrm <- lm(MEDV ~ NOX + CHAS + poly(RM, 2, raw = TRUE), data = housing_data)
+
+stargazer(model_nox_chas_rm, model_nox_chas_polyrm, type = "text")
+```
+
+This result may be surprising. We now see that adding more rooms decrease the price at a decreasing rate. Remember that the minimum value of RM in our sample is 3.5, and the mean is 6.2. 
+
+## Logarithmic predictors
+
+Another variable we may be interested in adding to the model is the distance to employment centres. Traditionally, we expect housing prices to be higher near to employment centres. However, it is hard to believe that each mile of distance will deduct the same amount in housing prices. A more reasonable approach is to include the logarithm of the distance. This smoothes the effect on price as the distance increases. 
+
+```{r}
+model_nox_chas_polyrm_dis <- lm(MEDV ~ NOX + CHAS + poly(RM, 2, raw = TRUE) + log(DIS), data = housing_data)
+
+stargazer(model_nox_chas_rm, model_nox_chas_polyrm, model_nox_chas_polyrm_dis, type = "text")
+```
+
+## Categorical predictors
+Until now our model analyzes the effect on housing prices controling for nitric oxides concentration, Charles River dummy variable, average number of rooms per dwelling and weighted distances to five Boston employment centres. But there are several other characteristics that we would like to control for, but that are not in our data.
+
+A useful technique is to add fixed effects to our regression. This controls for unobservable characteristics common for a certain group, as long as they stay constant during our period of analysis.
+
+In our data, it would be interesting to control for suburbs of Boston. Such areas probably share common traces that are not captured in our variables. But we cannot identify suburbs in our data. We do have the index of accessibility to radial highways. We expect houses with the same index to have common characterists. By adding fixed effects at this level, we are controlling for such unobservables.
+
+Use the `plm()` command of the `plm` package and the `within` model.
+
+```{r}
+model_nox_chas_polyrm_dis_fe <- lm(MEDV ~ NOX + CHAS + poly(RM, 2, raw = TRUE) + log(DIS) + as.factor(RAD), data = housing_data)
+
+stargazer(model_nox_chas_polyrm_dis, model_nox_chas_polyrm_dis_fe, type = "text")
+```
+
+Notice none of our results changed significantly. This assures us that our previous model is already robust, or that RAD fixed effects do not capture significant unobservables in the neighborhood. 
