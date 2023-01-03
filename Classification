@@ -1,0 +1,161 @@
+---
+title: "Lab 07 -- Classification"
+author: Paulami Ray
+date: Assignment due by 11:59PM on Friday, 9/28/2018
+output:
+  html_document:
+  theme: simplex
+fig_caption: true
+---
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Getting started
+In this assignment, you will apply regression tools to the Freddie Mac Data, building on the models discussed in class.
+
+Start by loading the packages `tidyverse` and `MASS`. Also load the Freddie Mac data you downloaded from S3, per the assignment instructions. You will work only with unique values per loan. Run the code below to load the data and exclude observations with missing values in any of our variables of interest.
+
+The data looks at loans 48 months after the scheduled first month of payment. 
+
+```{r}
+library(tidyverse)
+library(MASS)
+
+# Download data from S3, by running the following Unix command in RStudio shell:
+# aws s3 cp s3://bigdata-fin580/lab-07/data/Freddie_Mac_month_48.Rdata ~/lab-07/data/Freddie_Mac_month_48.Rdata
+
+# Load data into R workspace
+load("data/Freddie_Mac_month_48.Rdata")
+
+# Remove observations with missing FICO, interest, DTI (if any)
+orig_svcg_48 <- filter(orig_svcg_48, complete.cases(fico,int_rt,dti))
+```
+
+# Problem 1: Split the data to test the models
+In this problem set you will develop several models and compare their accuracy. To do this, you will fit the model using part of the data and examine the fit by how well it explains the remaining part of the data. This generates a measure of how well your model predicts out-of-sample outcomes, a concept we will more fully develop later in the course.
+
+Partition the `Freddie_Mac_month_48` dataframe into two data frames. The first data frame, which you should name `data_model`, should cover all loans beginning in 2006 or earlier. the second dataframe, called `data_test`, should cover loans beginning in 2007 or later. Use the variable `dt_first_pi_date` to tell when the first payment of the loan was scheduled.
+```{r}
+
+data_model <- filter(orig_svcg_48, as.numeric(substr(orig_svcg_48$dt_first_pi_date, 1,4)) <= 2006)
+data_test <- filter(orig_svcg_48, as.numeric(substr(orig_svcg_48$dt_first_pi_date, 1,4)) > 2006)
+
+```
+
+
+# Problem 2: Fit a Linear Probability Model
+
+* Using the `glm()` command, estimate a linear probability model of D180 using three predictors: the borrower's credit score, the loan original interest rate, and the debt-to-income ratio. Interpret the coefficients of the model. 
+* Make a scatter plot with FICO score on the x-axis and the model fitted values on the y-axis.
+* Calculate the predicted value of D180 for an individual with a FICO score of 800, a DTI of 30, and an interest rate of 4.5. What does this say about your model?
+
+```{r}
+#Linear Model
+model_d180 <- glm(d180 ~ fico + int_rt + dti, data = data_model)
+summary(model_d180)
+
+#Scatter Plot
+data_model %>%
+ggplot() + 
+geom_point(aes(x = fico, y = model_d180$fitted.values),size=1.5, shape=20,color="red")
+
+#Predicted Value
+lin_predict <- predict(model_d180, data.frame(fico = 800, dti = 30, int_rt =4.5),type = "response" )
+lin_predict
+
+#Explanation:
+# It says that the credit score decreases with increase in interest rate and the debt to income ratio.
+
+```
+
+# Problem 3: Fit a Logistic Model
+Repeat the exercises in problem 2, but using a logit (binomial) model rather than the linear probability model.
+
+* Using the `glm()` command, estimate a logistic model of D180 on the credit score, the loan original interest rate and on the debt-to-income ratio. Interpret the coefficients of the model. 
+* Make a scatter plot of the model with FICO on the x-axis.
+* Calculate the predicted value of D180 for an individual with a FICO score of 800, a DTI of 30, and an interest rate of 4.5. **Hint:** if you have estimated a model and saved the output to `glm_fit`, you can generate predicted outcomes for any dataset that contains the same predictors using the `predict` command. For example, if `another_data_frame` contains FICO, DTI, and interest rate variables, `predict(glm_fit, newdata = another_data_frame, type = "response")` will generate predicted probabilities for the new data set.
+
+```{r}
+#Logistic Model
+model_logit <- glm(d180 ~ fico + int_rt + dti, data = data_model, family=binomial(link='logit'))
+summary(model_logit)
+
+#Scatter Plot
+data_model %>% 
+  ggplot()+ 
+  geom_point(aes(x=fico, y=model_logit$fitted.values))
+
+#Predict the model
+p_log <- predict(model_logit,data.frame(fico = 800, dti = 30, int_rt =4.5),type = "response")
+p_log
+```
+# Problem 4: Fit a Linear Discriminant Model
+Repeat the exercises in problem 2 and 3, now for a linear discriminant model (see lecture materials for an example of how to estimate this type of model).
+
+* Fit a linear discriminant model of D180 on the credit score, the loan original interest rate and on the debt-to-income ratio. Interpret the coefficients of the model. 
+* Make a scatter plot of the model with FICO on the x-axis.
+* Calculate the predicted value of D180 for an individual with a FICO score of 800, a DTI of 30, and an interest rate of 4.5. Hint: you may want to use the `predict` command, as in problem 3.
+
+```{r}
+#LDA Model
+model_lda <- lda(d180 ~ fico + int_rt + dti, data = data_model)
+
+lda_posterior <- predict(model_lda, data_model)
+head(lda_posterior$posterior)
+
+data_model$lda_fitted <-lda_posterior$posterior[,2]
+
+#Scatter plot
+data_model %>% 
+  ggplot() +
+  theme_minimal() +
+  geom_point(aes(x=fico, y=lda_fitted), colour = "darkblue")
+
+#Predict
+p_lda <- predict(model_lda, data.frame(fico = 800, dti = 30, int_rt =4.5),type = "response")
+p_lda
+```
+
+# Problem 5: Compare the Accuracy of the Models
+Use the `data_test` to test the accuracy of each of the models above. If a model predicts an observation to have a 50% or greater chance of default, we will say that the model predicts that loan to default. Otherwise, we will say the model predicts that the loan will not default. We can then define the accuracy rate of the model to be the fraction of loans where the predicted default outcome equals the actual default outcome.
+
+What is the accuracy rate of the linear, logit, and LDA models above in predicting default rates in the `data_test` data set? Which model is the most accurate? What do you believe could improve the fit of the models? What are some shortcomes of testing a model this way?
+
+```{r}
+
+#Linear Model
+data_acc1 <- data_test %>% dplyr::select(d180) 
+data_acc1 <- data_acc1 %>%     
+             mutate(model1 = ifelse(predict(model_d180, data_test,type = "response") > 0.5 , 1,0))
+data_acc1%>%
+summarise(mean(model1 == d180)) 
+#Accuracy for Linear Model =  74.04%
+        
+
+# Logit Model
+data_acc2 <- data_test %>% dplyr::select(d180) 
+data_acc2 <- data_acc2 %>%     
+             mutate(model2 = ifelse(predict(model_logit, data_test,type = "response") > 0.5 , 1,0))
+data_acc2%>%
+summarise(mean(model2 == d180)) 
+#Accuracy for Logistic Model = 74.59%
+
+#LDA Model
+data_acc3 <- data_test %>% dplyr::select(d180) 
+data_acc3 <- data_acc3 %>%     
+             mutate(model3 = ifelse(predict(model_lda, data_test,type = "response")$posterior[,2] > 0.5 , 1,0))
+data_acc3%>%
+summarise(mean(model3 == d180)) 
+#Accuracy for LDA model = 74.56%
+
+#Explanation:
+#Among the three model, the logistic regression model is the most accurate one as it has the highest accuracy percentage.
+
+#The following are the ways in which we could improve the fit:
+#1.Build many regression models with different combination of variables
+#2.Adding more values to the data set
+#3.Transforming the variables
+
+# The shortcoming in this model is to have an arbitrary threshold value set to 50% which may not be a good representative value. In this process we may have many false positive values in the model and miss out true positive ones.
+```
