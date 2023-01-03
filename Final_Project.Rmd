@@ -1,0 +1,136 @@
+---
+title: "Final_Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+#load file
+loans_2017 <- read_csv("application2017.csv")
+
+#check missing data
+sum(!complete.cases(loans_2017))
+
+#create variables
+
+#profit equal the amount paid minus the amount of the loan. 
+loans_2017$profit <- as.factor(ifelse(loans_2017$amt_paid - loans_2017$loan_amt >=0, 1,0))
+
+#interest rate is equal to the ratio of amount due to loan amount. 
+loans_2017$int_rate <- (loans_2017$amt_due / loans_2017$loan_amt - 1) * 100
+
+#loan to income ratio for year 1. How much bigger is the loan compared to the income
+loans_2017$li_ratio_y1 <- ifelse(loans_2017$loan_amt / loans_2017$W2inc_m1 == Inf , 0 , loans_2017$loan_amt / loans_2017$W2inc_m1 )
+
+#select variables to be used
+loans_2017 <- select(loans_2017, 8:length(loans_2017))
+
+loans_2017 <- select(loans_2017,-c(5,6))
+#transform categorical variables , statecode, married, education, taxdependent
+fact_col <- c(1, 3, 4, 5)
+
+loans_2017[,fact_col] <- lapply(loans_2017[ ,fact_col], as.factor)
+
+glimpse(loans_2017)
+
+```
+
+
+```{r}
+#Explore Data
+
+
+p <- ggplot(loans_2017, aes(y=profit))
+
+p + geom_point(mapping = aes(x = creditscore)) + geom_smooth(mapping = aes(x = creditscore), method="auto")
+
+p + geom_point(mapping = aes(x = creditscore, y = profit)) + facet_wrap(~statecode)
+
+p + geom_point(mapping = aes(x = creditscore, y = profit)) + facet_wrap(~taxdependent)
+
+p + geom_point(aes(x=age))
+
+p + geom_point(aes(x=asset))
+
+
+p + geom_point(aes(x=debt))
+
+p + geom_point(aes(x=int_rate))
+
+p + geom_point(aes(x=li_ratio_y1)) + scale_x_continuous(limits = c(0, 10))
+
+p + geom_point(aes(x=li_ratio_y2)) + scale_x_continuous(limits = c(0, 10))
+```
+
+## LINEAR
+
+```{r, echo=FALSE}
+library(glmnet)
+library(boot)
+##CV
+#formula for the model
+linear_form <- formula(profit~.)
+
+#fit the model , family binomial is for logistic regressions
+lm.fit <- glm(linear_form, data=loans_2017, family = binomial(link = "logit"))
+
+#Cross Validate the model
+cv.err <- cv.glm(loans_2017, lm.fit)
+
+#CV Error
+cv.err$delta[1]
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+#LASSO
+#Tried to do something like a cross validation for lasso , Im not sure if I got it right , either way the error is higher for this one
+
+#Create matrix and remove intercept
+x <- model.matrix(linear_form, data= loans_2017)[,-1]
+
+#create y vector
+y <- loans_2017$profit
+
+#use cv.glmnet to cross validate , alpha=1 for lasso, family binomial for logistic, measure clas to rpeidct the class
+lasso_loans <- cv.glmnet(x, y, alpha=1, family='binomial'  ,type.measure =  'class')
+
+plot(y=lasso_loans$cvm, x=lasso_loans$lambda)
+
+#select lowest cv error
+lasso_err <- lasso_loans$cvm[which(lasso_loans$lambda == lasso_loans$lambda.min)]
+
+#lowest cv
+lasso_err
+
+#coefficients of model for lowest lambda
+coef(lasso_loans, s = lasso_loans$lambda.min)
+
+#This is higher than the regular logistic model
+```
+
+
+
+
+
+```{r}
+#TREEE
+library(tree)
+
+#fit the tree
+tree_l <- tree(factor(profit)~., data=loans_2017)
+
+#look at the missclassification erro on the output table
+summary(tree_l)
+
+#croos validate tree
+cross_val <- cv.tree(tree_l, FUN = prune.misclass)
+
+#Prune tree by picking a cp value , gets almost same result as original tree
+summary(prune.misclass(tree_l, best = 20))
+
+
+```
