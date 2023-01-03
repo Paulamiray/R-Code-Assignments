@@ -1,0 +1,198 @@
+---
+title: "Lab 05 - Simple Linear Regression"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    theme: simplex
+    fig_caption: true
+    number_sections: false
+---
+
+# Getting started
+"Simple" linear regression refers to models where we have an *outcome variable* $Y$ and only one *independent variable* $X$.  Simple linear regression can be used to address questions such as "What is our best prediction of $Y$ if we only know $X$?" "What is the relationship between $X$ and $Y$ in the data?" "If we change $X$ how will $Y$ change?"
+
+In a simple linear regression, the relationship between $Y$ and $X$ is expressed as a linear relationship, taking the form $Y=a+bX+\epsilon$. Here, $a$ and $b$ are the *parameters* (also called *coefficients*) of the model. Because model is linear, $a$ can be called the "intercept" and $b$ the "slope." The error term $\epsilon$ in this model acknowledges that realized outcomes may deviate from outcomes predicted by the model. The goal is to find a linear model that minimizes these errors.
+
+We often see these simple linear models expressed graphically as a "trendline," or line of best fit, drawn through a scatter plot of $Y$ versus $X$.  The trendline assigns a value for $Y$ based on the value of $X$.  The model for lines of best fit takes the slope-intercept form we are familiar with, $Y=a+bX$.
+
+
+# Boston Housing Data
+We will work with the Boston Housing Data, which consists of housing values in suburbs of Boston taken from the 1970 Census. It also contains other information that may affect house prices, such as the crime rate in the area and the proportion of owner-occupied houses. The data set and data dictionary can be found at [Boston Housing Data](https://archive.ics.uci.edu/ml/machine-learning-databases/housing/).
+
+In RStudio, create a folder called `lab-05` and set this folder as your working directory. Download the `housing.data` and `housing.names` files from the Boston Housing Data archive to a sub-directory called `data_housing`. You can perform these steps manually, but a more reproducible approach is to perform these steps using R commands.
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+
+# Make data directory
+dir.create("data_housing")
+
+# Download data
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data" %>% 
+  download.file("data_housing/housing.data")
+
+# Download data dictionary
+"https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.names" %>% 
+  download.file("data_housing/housing.names")
+
+```
+
+
+## Reading data into R
+Read the data into R using the `read_table` command from the `readr` package. 
+
+```{r message = FALSE, echo = TRUE}
+# Variable names from housing.names
+variables <- c("CRIM", "ZN", "INDUS",  "CHAS", "NOX", "RM", "AGE", 
+               "DIS", "RAD", "TAX", "PTRATIO", "B", "LSTAT", "MEDV")
+
+# Read data
+housing_data <- read_table("data_housing/housing.data", col_names = variables)
+```
+
+Inspect the data to confirm that the import was successful and to learn about the variables in the data.
+```{r, results='hide'}
+print(housing_data)
+summary(housing_data)
+```
+
+## Create a subset of the data
+For teaching purposes, we will work with a small subset of 20 observations from the data. Take a random subset using the function `sample_n`. Set the random "seed" to the value 2, ensuring this random sample is reproducible.
+
+```{r}
+# Set seed
+
+# Sample 20 obs from data
+housing_data_subset <- sample_n()
+```
+
+# Housing Values and Air Pollution
+Nitrogen oxides, or NOx, are gases that contribute to the formation of smog and acid rain and can be harmful to human health. How are housing prices related to air quality in the neighborhood, as captured by NOx concentrations (parts per 10 million)? 
+
+## Visualizing the model
+Make a scatter plot of NOx concentrations ($x$ axis) and median housing value ($y$ axis) to visually model their relationship. To quantify the general relationship, you can use the Pearson correlation between the variables using the `summarise()` and `cor()` commands. 
+
+```{r, fig.show='hide'}
+# Summary stats
+summarise(housing_data_subset, cor = cor(NOX, MEDV))
+
+# scatter plot with x = NOX, y = MEDV
+
+```
+
+## Guessing a Linear Model
+The plot shows that higher concentrations of nitrogen oxides are negatively associated with the median value of owner-occupied homes (in $1000's). 
+
+After looking at the plot, we can try and guess a suitable linear model to fit our data. Remember, a linear model is of the form $Y=a+bX$. We want to determine the best values for $a$ - the "intercept" - and for $b$ - the "slope". 
+
+One simple approach is to simply guess values of $a$ and $b$, in order to find a linear fit that looks about right. Let's try $a=42.830925$ and $b=-35$.
+
+The resulting linear model can be plotted into out graph using the function `geom_abline()` function of `ggplot2`. This adds a reference line to our graph. 
+
+```{r}
+guess_intercept <- 42.830925
+guess_slope <- -35
+
+
+ggplot(housing_data_subset, aes(x = NOX, y = MEDV)) + 
+  geom_point() + 
+  geom_abline()
+```
+
+Visually it is hard to judge the model, so it is important to calculate a statistic that tell us how good the fit is. 
+
+One way to measure it is to calculate the total amount of error in the model, where errors are defined to be the distance between predicted values and the actual values. The predicted value is calculated by finding the housing value our model predicts for a certain level of NOx concentration: `predicted MEDV = (intercept + slope*NOX)` (the red line). It is common to use the term "hat" when referring to predicted values, as in $\hat{MEDV}$.
+
+```{r}
+housing_data_subset <- housing_data_subset %>% 
+  mutate(MEDV_guess_hat = (guess_intercept + guess_slope*NOX))
+
+# ggplot with x = NOX, y = MEDV
+#  + add guess trendline
+#  + add error segments (xend = NOX, yend = MEDV_guess_hat)
+
+
+```
+
+Let's consider two measures of error in our model: Mean Error, and Mean Squared Error (MSE). We calculate Mean Error by calculating the average prediction error $\hat\epsilon = y-\hat{y}$ in our model. Mean Squared Error is calculated as the average of the squared errors $\hat\epsilon^2$.
+
+```{r}
+guess_fit <- housing_data_subset %>% 
+  summarise(
+    guess_mean_err = mean(MEDV - MEDV_guess_hat), 
+    guess_mean_sqerr = mean((MEDV - MEDV_guess_hat)^2))
+print(guess_fit)
+```
+
+This distance is a measure of how good our model is adjusted to the real data. Can you find a slope and intercept that generate a smaller total distance?
+
+# Simple Linear Models
+There are infinite possible guesses of a suitable slope and intercept to minimize MSE. We will rely on the Ordinary Last Squares (OLS) method to estimate $a$ and $b$. By construction, OLS picks parameters to minimize MSE. 
+
+We will run OLS by using the command `lm()`, which you have already used to calculate trendlines. We will save the results in a variable called `model_lm`.
+
+```{r}
+model_lm <- lm(MEDV ~ NOX, data = housing_data_subset)
+```
+
+By storing the results of our model, we can access and display the output in a variety of ways:
+```{r, results='hide'}
+if (!require(stargazer)) install.packages("stargazer")
+library(stargazer)
+
+model_lm
+coef(model_lm)
+summary(model_lm)
+stargazer(model_lm, type = "text")
+```
+
+In addition, by using `lm()` we create an object that contains several following components useful when analyzing a linear model. You can see them all by typing `?lm()`. 
+
+Notice some of the commands also reported the RSS. We will calculate it by hand to confirm. As we did with our guess model, calculate the total distance and the total squared distance, or, more formaly, the RSS. 
+
+
+```{r, results='hide'}
+# Store the model error 
+housing_data_subset$model_lm_residuals <-  model_lm$residuals           
+    
+# MSE
+lm_fit <- housing_data_subset %>% 
+  summarise(
+    lm_mean_err = mean(model_lm_residuals), 
+    lm_mean_sqerr = mean((model_lm_residuals)^2))
+lm_fit
+```
+
+Now we can compare the fit between the OLS and the model we guessed. Notice the MSE is smaller in the OLS, as we expected, but the distance is equal to zero (by construction!). Therefore, it is crucial to square the errors before adding them up. 
+
+```{r, results='hide'}
+c(guess_fit, lm_fit)
+```
+
+We will use MSE extensively in this class. There is a very close connection between MSE and the R squared $R^2$, another common measure of goodness of fit of a model. The $R^2$ measures how much of the variation in the outcome is captured by the model. 
+
+$R^2 = \frac{TSS-RSS}{TSS} = 1 - \frac{RSS}{TSS}$
+
+In this equation, TSS is the total sum of squared deviations of the outcome $y$ from its average value. RSS is the total residual sum of squared prediction error from the model.
+
+By the nature of the equation, we know that $R^2$ is between 0 and 1.  The larger the portion of the variation is explained by the model, the closer $R^2$ will be to 1.
+
+
+# Visualizing the model
+The visualization confirms that OLS is the best fit for the linear model.
+
+```{r, fig.show='hide'}
+# add abline with slope and intercept from linear model
+ggplot(housing_data_subset, aes(x = NOX, y = MEDV)) + 
+  geom_point() +
+  geom_abline(intercept = guess_intercept, slope = guess_slope, colour = "red")
+
+#or
+ggplot(housing_data_subset, aes(x = NOX, y = MEDV)) + 
+  geom_point() +
+  geom_smooth()
+
+```
+
