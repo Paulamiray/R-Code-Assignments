@@ -1,0 +1,99 @@
+---
+title: "Lab 04 - Data visualization"
+author: Solutions
+date: 
+output: html_document
+---
+
+# Getting started
+
+```{r  message = FALSE}
+library(tidyverse)
+load("data/cleaned_Freddie_Mac.Rdata")
+```
+
+# Problem 1: Histogram
+```{r message = FALSE, warning = FALSE}
+orig_svcg %>% # Data set for plot
+  filter(duplicated == FALSE) %>% # Limit to first observation per loan
+  ggplot() + # Start a plot
+  geom_histogram( # Add a histogram to the plot
+    aes(fico), 
+    binwidth = 5, 
+    fill = "firebrick", 
+    color = "white") +
+  theme_minimal() +
+  ggtitle("Histogram of credit scores") + # Plot title
+  labs(x = "FICO") # x-axis title
+```
+
+
+# Problem 2: Bar graph
+```{r warning = FALSE}
+orig_svcg %>% 
+  filter(duplicated == FALSE) %>% # Limit to first observation per loan
+  ggplot(aes(x = st, y = default_byloan)) +
+  stat_summary(geom = "bar", fun.y = "mean", fill = "firebrick", size = 1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1)) +
+  ggtitle("Default rates by state") + labs(x="State", y = "Default rate") 
+```
+
+
+# Problem 3: Map (advanced and optional)
+```{r, results='hide', warning=FALSE, message=FALSE}
+require(maps)
+if (!require(mapproj)) {
+  install.packages("mapproj")
+  require(mapproj)
+}
+
+# Collapse default data to state-level means and 
+# cross-walk state abbreviations to lower case state names
+state_xw <- as_tibble(list(st=state.abb, region=tolower(state.name)))
+st_default <- orig_svcg %>%
+  filter(duplicated == FALSE) %>% # Limit to first observation per loan
+  group_by(st) %>% 
+  summarise(default_rate=mean(default_byloan)) %>%
+  left_join(state_xw, by = "st")
+  
+# Draw map of the 48 contiguous U.S. states, shaded by default rate
+us <- map_data("state")
+ggplot() + 
+  geom_map(data=us, map=us,
+           aes(x=long, y=lat, map_id=region),
+           fill="#ffffff", color="#ffffff", size=0.15) + 
+  geom_map(data=st_default, map=us,
+           aes(fill=default_rate, map_id=region),
+           color="#ffffff", size=0.15) +
+  scale_fill_continuous(low='thistle2', high='firebrick', guide='colorbar') + 
+  coord_map()+
+  theme_minimal() +
+  ggtitle("Default rates by state") 
+```
+
+# Problem 3: Line graph
+
+```{r warning = FALSE}
+orig_svcg$svcg_date <-as.Date(as.character(paste(orig_svcg$svcg_cycle,1)),"%Y %m %d")
+
+orig_svcg %>% 
+  ggplot(aes(x = svcg_date, y = default)) +
+  stat_summary(geom = "line", fun.y = "mean", colour = "firebrick", size = 1) +
+  scale_x_date(date_labels = "%Y %m", date_minor_breaks = "1 year", date_breaks = "1 year") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle=45)) +
+  ggtitle("Default rates by month") + labs(x="Month", y = "Default rate") 
+
+```
+
+# Problem 5: Scatter plot + trendline
+```{r warning = FALSE}
+orig_svcg %>% # Data set for plot
+  ggplot(aes(x = fico, y = default)) + # Start a plot
+  stat_summary(geom = "point", fun.y = "mean", colour = "firebrick", size = 2) +
+  geom_smooth(colour = "black", size = 1, se = FALSE, method = lm) +
+  theme_minimal() +
+  ggtitle("Default rates by FICO score") + labs(x="FICO", y = "Default rate")
+```
+
